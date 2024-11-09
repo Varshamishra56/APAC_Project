@@ -2,7 +2,6 @@ import os
 import streamlit as st
 import vertexai
 from vertexai.generative_models import GenerationConfig, GenerativeModel
-
 from google.cloud import storage
 
 def get_storage_url(uri: str):
@@ -20,7 +19,6 @@ def get_storage_url(uri: str):
         return blob.public_url
     else:
         raise ValueError(f"Invalid URI: {uri}")
-
 
 # Google Cloud setup
 PROJECT_ID = os.environ.get("GCP_PROJECT")
@@ -43,6 +41,15 @@ def prioritize_tasks(model: GenerativeModel, patient_data: dict, generation_conf
     
     responses = model.generate_content(
         contents,
+        generation_config=generation_config,
+        stream=False,
+    )
+    return responses.text
+
+def generate_campaign(model: GenerativeModel, prompt: str, generation_config: GenerationConfig) -> str:
+    """Generate a marketing campaign based on provided prompt."""
+    responses = model.generate_content(
+        prompt,
         generation_config=generation_config,
         stream=False,
     )
@@ -129,11 +136,11 @@ with tab2:
     Estimated Budget: {budget}
     """
     
-    generate_campaign = st.button("Generate Campaign")
+    generate_campaign_button = st.button("Generate Campaign")
     
-    if generate_campaign:
+    if generate_campaign_button:
         config = GenerationConfig(temperature=0.8, max_output_tokens=2048)
-        campaign_response = prioritize_tasks(selected_model, prompt, config)
+        campaign_response = generate_campaign(selected_model, prompt, config)
         
         st.subheader("Generated Campaign")
         st.write(campaign_response)
@@ -150,22 +157,27 @@ with tab3:
         horizontal=True,
     )
 
-    # Placeholder images (to be replaced with actual healthcare images)
-    sample_image_uri = "gs://your-bucket-path/sample-image.jpg"
-    sample_image_url = get_storage_url(sample_image_uri)
+    # Upload image option for user
+    uploaded_image = st.file_uploader("Upload a Healthcare Image", type=["jpg", "jpeg", "png"])
     
-    st.image(sample_image_url, width=350, caption="Sample Healthcare Image")
-    
-    image_analysis_prompt = """
-    Analyze this healthcare image for relevant insights. Determine the key features,
-    potential diagnoses, or further investigation steps needed based on the visual data.
-    """
-    
-    analyze_image = st.button("Analyze Image")
-    
-    if analyze_image:
-        sample_image = Part.from_uri(sample_image_uri, mime_type="image/jpeg")
+    if uploaded_image:
+        st.image(uploaded_image, caption="Uploaded Healthcare Image", width=350)
         
-        with st.spinner(f"Analyzing image using {get_model_name(selected_model)} ..."):
-            response = get_gemini_response(selected_model, [sample_image, image_analysis_prompt])
-            st.write(response)
+        image_analysis_prompt = """
+        Analyze this healthcare image for relevant insights. Determine the key features,
+        potential diagnoses, or further investigation steps needed based on the visual data.
+        """
+        
+        analyze_image_button = st.button("Analyze Image")
+        
+        if analyze_image_button:
+            # For simplicity, we pass the image's bytes to the model if it supports it.
+            image_bytes = uploaded_image.read()
+            
+            with st.spinner(f"Analyzing image using {get_model_name(selected_model)} ..."):
+                # Pass image data and prompt to the model (assuming it accepts binary input here).
+                response = selected_model.generate_content(
+                    f"{image_analysis_prompt} Image Data: {image_bytes[:500]}",
+                    generation_config=GenerationConfig(temperature=0.7, max_output_tokens=500)
+                )
+                st.write(response.text)
